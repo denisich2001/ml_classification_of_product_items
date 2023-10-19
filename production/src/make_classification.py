@@ -1,6 +1,6 @@
 import pandas as pd
 from loguru import logger
-from trainset_handler import TrainsetHandler
+from handle_trainset import TrainsetHandler
 from handle_raw_products_frame import RawProductsFrameHandler
 from utils.errors import NoProductsDataException
 
@@ -23,12 +23,14 @@ class Classificator:
     n_workers - количество процессоров доступных для выполнения кода (по умолчанию = 1)
     """
     # todo Добавить:
-    # * ЧТО ДЕЛАТЬ В СЛУЧАЕ ОШИБОК ПРИ ВЫПОЛНЕНИИ?
-    # * Логгирование
     # * Проверку на известный тип данных колонки
+    # * Все числовые факторы перевожу в категориальные - протестировать
+    # * Декоратор для обработки ошибок
+    # * FastApi
+    # * Добавить логгирование
 
     def __init__(self, raw_products_frame: pd.DataFrame = None, n_workers: int = 1):
-        
+        # todo ЛОГГИРОВАНИЕ
 
         self.raw_products_frame = raw_products_frame
         self.trainset = None

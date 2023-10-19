@@ -10,3 +10,5 @@ class ClassificatorModelInterface(ABC):
         * Оценка качества
         * Формирование итогового предсказание
     '''
+    def __init__(self) -> None:
+        super().__init__()
