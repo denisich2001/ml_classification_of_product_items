@@ -1,6 +1,8 @@
 import pandas as pd
 from loguru import logger
-from TrainsetHandler import TrainsetHandler
+from trainset_handler import TrainsetHandler
+from handle_raw_products_frame import RawProductsFrameHandler
+from utils.errors import NoProductsDataException
 
 class Classificator:
     """
@@ -12,71 +14,69 @@ class Classificator:
     
     Parameters
     ----------
-    products_df: pandas.DataFrame - таблица с данными для предсказания.
+    raw_products_frame: pandas.DataFrame - таблица с данными для предсказания.
         Должна содержать столбцы:
             - "ID класса (ТАРГЕТ)" - с id предсказываемых классов
             - "Историческое наименование"
             - Пары колонок с названями в формате: "ХК_{тип данных}_номер" и "Значение ХК_{тип данных}_номер"
-            - Все остальные столбцы будут проигнорированны 
+            - Все остальные столбцы будут проигнорированны
+    n_workers - количество процессоров доступных для выполнения кода (по умолчанию = 1)
     """
-    # Структура классов:
-    # * Класс для общего workflow (ClassificatorWorkFlow)
-    #   * Класс для хранения данных нашего решения (изначально сырые данные, потом трейнсет) (DataHandler)
-    #      * Класс для сырых данных (данные и методы их обработки) (RawDataHandler)
-    #      * Класс для трейнсета и его (обработки) (TrainsetHandler)
-    #   * Интерфейс для модели (чтобы можно было добавлять другие алгоритмы, не только RandomForest) (ClassificatorModelInterface)
-    #       * Класс для RandomForest (RandomForestModel)
-    #   
-    # Декораторы:
-    # * Логгер
-    # * Обработчик ошибок
-
     # todo Добавить:
-    # * Общую структуру и запушить
     # * ЧТО ДЕЛАТЬ В СЛУЧАЕ ОШИБОК ПРИ ВЫПОЛНЕНИИ?
     # * Логгирование
-    # * ProductsData - Класс для всего что касается хранения и данных нашего решения (сырые данные)
-    # * DataHandler - Класс первичной обработки сырых данных (выделение типов колонок, заполнение пропусков, кодирование переменных)
-    # * TrainsetHandler - Класс для хранения и обработки трейнсета (Хранение трейнсета, таргета(данные для которых будем строить итоговое предсказание), данных для предсказания, названий колонок и типов данных. 
-    #                                             Удаление слабо коррелирующих с таргетом факторов, несбалансированность классов, PCA, разбиение на train_test)
-    # * Classificator Класс модели классификатора (подборка гиперпараметров, обучение моделей, оценка качества, итоговое предсказание ) 
     # * Проверку на известный тип данных колонки
 
-    def __init__(self, raw_data: pd.DataFrame = None):
-        self.raw_data = raw_data
+    def __init__(self, raw_products_frame: pd.DataFrame = None, n_workers: int = 1):
+        
 
+        self.raw_products_frame = raw_products_frame
         self.trainset = None
+
         # todo Итоговое предсказание и метрики качества (возможно лучше вынести в класс)
         self.final_prediction = None
         self.final_metrics = None
 
-    def classify_products() -> pd.DataFrame:
+        self.n_workers = n_workers
+
+
+    def classify_products(self) -> pd.DataFrame:
         """
-        Основной метод запускающий все этапы генерации данных
+        Основной метод, запускающий все этапы генерации данных
         """
         logger.info("Начало работы алгоритма.")
-        # Обработка сырых данных
-        raw_data_handling()
-        # Формирование трейнсета
-        trainset_forming()
-        # Обучение и выбор модели
-        classificator_fit()
-        # Итоговое предсказание
-        final_prediction = classificator_predict()
+        self.input_parameters_check()
+        self.handle_products_data()
+        self.classificator_fit()
+        final_prediction = self.classificator_predict()
         return final_prediction
     
-    def raw_data_handling():
-        a = 1
-    
-    def trainset_forming():
+    def input_parameters_check(self) -> bool:
+        """
+        Проверка на наличие ошибок в исходных данных:
+            * Проверка на наличие датафрейма с данными для обучения
+            * Проверка количества доступных процессоров
+        """
+        if self.raw_products_frame is None:
+            raise NoProductsDataException()
+        # todo Проверка количества доступных процессоров
+        return True
+
+    def handle_products_data(self):
+        """
+        Проверка на возникновение ошибок при формировании трейнсета
+        """
+        try:
+            self.trainset = TrainsetHandler(self.raw_products_frame).form_trainset()
+        except:
+            # todo добавить обработку исключений
+            logger.error('Какая-то ошибка при формаировании трейнсета!')
+        finally:
+            # todo изменить
+            exit()
+
+    def classificator_fit(self):
         a = 1
 
-    def classificator_fit():
+    def classificator_predict(self):
         a = 1
-
-    def classificator_predict():
-        a = 1
-
-
-raw_data_df = pd.read_excel('data/tire_classificator_data.xlsx')
-target_predict = ClassificatorWorkFlow(raw_data_df).classify_products()
