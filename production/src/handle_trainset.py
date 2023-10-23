@@ -1,26 +1,27 @@
 import pandas as pd
-from handle_raw_products_frame import RawProductsFrameHandler
-from sklearn.model_selection import train_test_split
-from utils.errors import NoPredictionsDataException
 from loguru import logger
+from sklearn.decomposition import PCA
+from imblearn.over_sampling import RandomOverSampler
+from handle_raw_product_table import RawProductsTableHandler
+from utils.errors import NoPredictionsDataException
+from production.config import TargetNameColumn
 
 class TrainsetHandler:
-    '''
+    """
     Класс для обработки сырых данных, формирования и хранения трейнсета:
-        * Хранение сформированного трейнсета, таргета 
-        * Хранение данные для которых будем строить итоговое предсказание
+        * Хранение сформированного трейнсета, таргета
         * Обработка сырых данных
-        * Удаление слабо коррелирующих с таргетом факторов
-        * Несбалансированность классов 
-        * PCA 
-        * Разбиение на train_test
-    '''
-    def __init__(self, raw_products_frame: pd.DataFrame) -> None:
-        self.raw_products_frame = raw_products_frame.copy()
+        * Хранение данные для которых будем строить итоговое предсказание
+        * Отбор только информативных и некоррелирующих факторов
+        * Устранение несбалансированности классов
+        * PCA
+    """
+    def __init__(self, raw_product_table: pd.DataFrame) -> None:
+        self.raw_product_table = raw_product_table.copy()
 
         # Переменные для итогового трейнсета после всех обработок
-        self.final_features = None
-        self.final_target = None
+        self.trainset_features = None
+        self.trainset_target = None
 
         # Данные для которых будет выполняться итоговое предсказание
         self.products_for_classification = None
@@ -28,37 +29,58 @@ class TrainsetHandler:
     def form_trainset(self):
         """
         Основной метод формирования трейнсета
+        Returns
+        -------
+        trainset_features и trainset_target - факторы и таргет сформированного трейнсета
         """
         logger.info('Начинаем формирование трейнсета.')
-        handled_products_frame = RawProductsFrameHandler(self.raw_products_frame).handle_raw_products_frame()
-        products_frame = self.separate_predictions_data_from_train(handled_products_frame)
-        # todo ДОПИЛИТЬ
-        return self.products_train_test_split()
+        handled_product_table = RawProductsTableHandler(self.raw_product_table).handle_raw_product_table()
+        primary_trainset = self.separate_predictions_data_from_train(handled_product_table)
+        informative_factors_trainset = self.informative_factors_selection(primary_trainset)
+        balanced_trainset = self.trainset_target_balancing(informative_factors_trainset)
+        final_trainset = self.pca_trainset_transformation(balanced_trainset)
 
-    def separate_predictions_data_from_train(self, original_products_frame: pd.DataFrame):
+        self.trainset_target = final_trainset[TargetNameColumn]
+        self.trainset_features = final_trainset.drop(TargetNameColumn, axis=1)
+        logger.info('Трейнсет успешно сформирован.')
+        return self.trainset_features, self.trainset_target
+
+    def separate_predictions_data_from_train(self, original_product_table: pd.DataFrame):
         """
         Метод отделения тренировочных данных от данных для предсказания (строки с пустыми значениями в колонке класса)
         """
-        products_frame = original_products_frame.copy()
-        self.products_for_classification = products_frame[products_frame['ID класса (ТАРГЕТ)'].isna()]
-        products_frame_for_train = products_frame[products_frame['ID класса (ТАРГЕТ)'].isna()]
-        
+        logger.info('Отделяем тренировочные данные от данных, для которых нужно выполнить предсказание класса.')
+        product_table = original_product_table.copy()
+        self.products_for_classification = product_table[product_table['ID класса (ТАРГЕТ)'].isna()]
+        product_table_for_train = product_table[product_table['ID класса (ТАРГЕТ)'].notna()]
+
         # Проверяем, присутствуют ли данные для выполнение предсказания классов
-        if (self.products_for_classification is None) or (self.products_for_classification.shape[0]==0):
-            logger.error('Отсутвуют данные для выполнения классификации!')
-            raise NoPredictionsDataException('Отсутвуют данные для выполнения классификации!')
-        
-        return products_frame_for_train
+        if (self.products_for_classification is None) or (self.products_for_classification.size==0):
+            logger.error('Отсутвуют данные для выполнения предсказания класса!')
+            raise NoPredictionsDataException('Отсутвуют данные для выполнения предсказания класса!')
+        logger.info(f'{self.products_for_classification.shape[0]} строк для выполнения классификации.')
+        return product_table_for_train
 
-    def products_train_test_split(self, test_size: float = 0.3):
-        """
-        Метод разбиения трейнсета на обучающую и тестовую выборки
+    def informative_factors_selection(self, original_trainset: pd.DataFrame):
+        # TODO ДОДЕЛАТЬ ОТБОР ФАКТОРОВ ПО КОРРЕЛЯЦИИ И ИНФОРМАТИВНОСТИ И ДИСПЕРСИИ
+        return original_trainset
 
-        test_size - отношение размера тестовой выборки (по умолчанию = 0.3)
-        """
-        features_train, features_test, target_train, target_test = train_test_split(
-            self.final_trainset_features, 
-            self.final_trainset_target, 
-            test_size  
-        ) 
-        return features_train, features_test, target_train, target_test
+    def trainset_target_balancing(self, original_trainset: pd.DataFrame):
+        logger.info('Устраним несбалансированность классов.')
+        trainset = original_trainset.copy()
+        logger.debug(f'2 самых частых и самых редких класса до балансировки:\n'
+                     f'{trainset.value_counts()[:2]}\n{trainset.value_counts()[-2:]}')
+        ros = RandomOverSampler()
+        balanced_features, balanced_target = ros.fit_resample(
+            trainset.drop('TargetNameColumn', axis=1),
+            trainset[TargetNameColumn]
+        )
+        balanced_trainset = pd.concat([balanced_features, balanced_target], axis=1)
+        logger.info('Устранили несбалансированность классов.')
+        logger.debug(f'2 самых частых и самых редких класса после балансировки:\n'
+                     f'{balanced_trainset.value_counts()[:2]}\n{balanced_trainset.value_counts()[-2:]}')
+        return balanced_trainset
+
+    def pca_trainset_transformation(self, original_trainset: pd.DataFrame):
+        # TODO ДОДЕЛАТЬ PCA (подбор оптималного количества компонент, pca, результаты)
+        pca = PCA(n_components=15)

@@ -1,7 +1,7 @@
 import pandas as pd
 from loguru import logger
 from handle_trainset import TrainsetHandler
-from handle_raw_products_frame import RawProductsFrameHandler
+from handle_raw_product_table import RawProductsTableHandler
 from utils.errors import NoProductsDataException
 
 class Classificator:
@@ -14,7 +14,7 @@ class Classificator:
     
     Parameters
     ----------
-    raw_products_frame: pandas.DataFrame - таблица с данными для предсказания.
+    raw_product_table: pandas.DataFrame - таблица с данными для предсказания.
         Должна содержать столбцы:
             - "ID класса (ТАРГЕТ)" - с id предсказываемых классов
             - "Историческое наименование"
@@ -29,10 +29,10 @@ class Classificator:
     # * FastApi
     # * Добавить логгирование
 
-    def __init__(self, raw_products_frame: pd.DataFrame = None, n_workers: int = 1):
+    def __init__(self, raw_product_table: pd.DataFrame = None, n_workers: int = 1):
         # todo ЛОГГИРОВАНИЕ
 
-        self.raw_products_frame = raw_products_frame
+        self.raw_product_table = raw_product_table
         self.trainset = None
 
         # todo Итоговое предсказание и метрики качества (возможно лучше вынести в класс)
@@ -59,7 +59,7 @@ class Classificator:
             * Проверка на наличие датафрейма с данными для обучения
             * Проверка количества доступных процессоров
         """
-        if self.raw_products_frame is None:
+        if self.raw_product_table is None:
             raise NoProductsDataException()
         # todo Проверка количества доступных процессоров
         return True
@@ -69,10 +69,10 @@ class Classificator:
         Проверка на возникновение ошибок при формировании трейнсета
         """
         try:
-            self.trainset = TrainsetHandler(self.raw_products_frame).form_trainset()
+            self.trainset_features, self.trainset_target = TrainsetHandler(self.raw_product_table).form_trainset()
         except:
             # todo добавить обработку исключений
-            logger.error('Какая-то ошибка при формаировании трейнсета!')
+            logger.error('Какая-то ошибка при формировании трейнсета!')
         finally:
             # todo изменить
             exit()
