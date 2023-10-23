@@ -3,3 +3,4 @@
 */.idea
 */.gitignore
 ./idea/misc.xml
+*/__pycache__/*

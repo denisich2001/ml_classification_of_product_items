@@ -2,8 +2,8 @@ import pandas as pd
 from loguru import logger
 from sklearn.decomposition import PCA
 from imblearn.over_sampling import RandomOverSampler
-from handle_raw_product_table import RawProductsTableHandler
-from utils.errors import NoPredictionsDataException
+from production.src.handle_raw_product_table import RawProductsTableHandler
+from production.src.utils.errors import NoPredictionsDataException
 from production.config import TargetNameColumn
 
 class TrainsetHandler:
@@ -53,11 +53,6 @@ class TrainsetHandler:
         product_table = original_product_table.copy()
         self.products_for_classification = product_table[product_table['ID класса (ТАРГЕТ)'].isna()]
         product_table_for_train = product_table[product_table['ID класса (ТАРГЕТ)'].notna()]
-
-        # Проверяем, присутствуют ли данные для выполнение предсказания классов
-        if (self.products_for_classification is None) or (self.products_for_classification.size==0):
-            logger.error('Отсутвуют данные для выполнения предсказания класса!')
-            raise NoPredictionsDataException('Отсутвуют данные для выполнения предсказания класса!')
         logger.info(f'{self.products_for_classification.shape[0]} строк для выполнения классификации.')
         return product_table_for_train
 

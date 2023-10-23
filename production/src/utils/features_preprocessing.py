@@ -14,9 +14,10 @@ def text_feature_preprocessing(text_feature, ):
         stemmer = SnowballStemmer("russian")
         # TODO ДОПИЛИТЬ
         vectorizer = TfidfVectorizer(
-            min_df = 20,
+            min_df=20,
+            max_features=20,
             analyzer='word',
-            stop_words = russian_stopwords
+            stop_words=russian_stopwords
         )
         processed_feature = []
         text_feature = text_feature.replace(r'[^\w\s]',' ', regex=True).replace(r'\s+',' ', regex=True).str.lower()

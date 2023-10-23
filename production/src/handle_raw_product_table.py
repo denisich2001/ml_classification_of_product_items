@@ -3,11 +3,11 @@ from loguru import logger
 import pandas as pd
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.preprocessing import LabelEncoder
-from utils.errors import UnknownColumnTypeException
-from utils.errors import IncorrectColumnNameException
-from utils.errors import NumberFeatureException
-from utils.errors import EmptyValuesAfterEncoding
-from utils.features_preprocessing import text_feature_preprocessing
+from production.src.utils.errors import UnknownColumnTypeException
+from production.src.utils.errors import IncorrectColumnNameException
+from production.src.utils.errors import NumberFeatureException
+from production.src.utils.errors import EmptyValuesAfterEncoding
+from production.src.utils.features_preprocessing import text_feature_preprocessing
 from production.config import OneHotEncodingLimit
 from production.config import TargetNameColumn
 
@@ -76,7 +76,6 @@ class RawProductsTableHandler:
         self.input_table_types_dict = self.get_column_types_dict(product_table.columns)
         for feature in self.input_table_types_dict.keys():
             if self.input_table_types_dict.get(feature) == 'Стр':
-                #todo ДОДЕЛАТЬ пока ничего не делаем, чтобы не потерять пропущенные значения при преобразовании в строковый формат
                 product_table[feature] = product_table.copy()[feature].astype(object)
             elif self.input_table_types_dict.get(feature) == 'Булево':
                 product_table[feature] = product_table.copy()[feature].astype(bool)
@@ -131,7 +130,6 @@ class RawProductsTableHandler:
             if self.input_table_types_dict.get(column) == 'Кат':
                 product_table.loc[product_table[column].isna(), column] = f'EmptyCat'
             elif self.input_table_types_dict.get(column) == 'Стр':
-                # todo Перепроверить норм ли задавать пустое значение строке как пустую строку
                 product_table.loc[product_table[column].isna(), column] = ''
             elif self.input_table_types_dict.get(column) == 'Булево':
                 product_table.loc[product_table[column].isna(), column] = 0
@@ -150,8 +148,6 @@ class RawProductsTableHandler:
         for feature in self.input_table_types_dict:
             if self.input_table_types_dict.get(feature) == 'Стр':
                 handled_feature = self.handle_text_feature(product_table[feature])
-                #handled_feature = handled_feature.fillna('')
-                # todo ПРОВЕРИТЬ НА ПРОПУСКИ
             elif self.input_table_types_dict.get(feature) == 'Кат':
                 handled_feature = self.handle_cat_feature(product_table[feature])
             else:
@@ -172,8 +168,7 @@ class RawProductsTableHandler:
         """
         cat_feature = cat_feature.astype(str)
         unique_values_count = cat_feature.drop_duplicates().size
-        # todo Убрать комментарий у OneHotEncodingLimit
-        if unique_values_count <= 30:#OneHotEncodingLimit:
+        if unique_values_count <= OneHotEncodingLimit:
             # OneHotEncoding
             cat_feature_encoded = pd.get_dummies(cat_feature)
         else:
