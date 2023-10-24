@@ -1,4 +1,6 @@
+from sklearn.ensemble import RandomForestClassifier
 from base_model_interface import ClassificatorModelInterface
+
 
 class RandomForestModel(ClassificatorModelInterface):
     '''

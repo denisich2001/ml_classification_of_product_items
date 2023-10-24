@@ -4,13 +4,10 @@ from config import TargetNameColumn
 from src.make_classification import Classifier
 
 
-def classify_data(raw_product_table: pd.DataFrame = None):
-    classified_products = Classifier(product_table).classify_products()
-    # logger.debug(f"Колонки на выходе: {classifier.columns}")
-    # logger.debug(f"Итоговый столбец с предсказанием: {classifier['predicted_class']}")
-    return classified_products
+def get_formed_trainset(raw_product_table: pd.DataFrame = None):
+    trainset_features, trainset_targets = Classifier(product_table).classify_products()
+    return trainset_features, trainset_targets
 
 
 product_table = pd.read_excel('data/paper_classificator_data.xlsx')
-classifier_output = classify_data(product_table)
-logger.debug(classifier_output)
+trainset_features, trainset_targets = get_formed_trainset(product_table)
