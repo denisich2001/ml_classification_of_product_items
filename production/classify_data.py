@@ -4,10 +4,11 @@ from config import TargetNameColumn
 from src.make_classification import Classifier
 
 
-def get_formed_trainset(raw_product_table: pd.DataFrame = None):
-    trainset_features, trainset_targets = Classifier(product_table).classify_products()
-    return trainset_features, trainset_targets
+def predict_classes(raw_product_table: pd.DataFrame = None):
+    predicted_classes = Classifier(raw_product_table).classify_products()
+    return predicted_classes
 
 
 product_table = pd.read_excel('data/paper_classificator_data.xlsx')
-trainset_features, trainset_targets = get_formed_trainset(product_table)
+#product_table = pd.read_excel('data/tire_classificator_data.xlsx')
+logger.debug(f'\n{predict_classes(product_table).head()}')

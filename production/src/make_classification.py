@@ -1,12 +1,13 @@
 import pandas as pd
 import numpy as np
 from loguru import logger
+
+from production.config import TargetNameColumn
 from production.src.handle_trainset import DataHandler
-from production.src.handle_raw_product_table import RawProductsTableHandler
+from production.src.random_forest_model import RandomForestModel
 from production.src.utils.errors import NoProductsDataException
 from production.src.utils.errors import NoTargetColumnException
 from production.src.utils.errors import NoPredictionsDataException
-from production.config import TargetNameColumn
 
 
 class Classifier:
@@ -39,12 +40,15 @@ class Classifier:
         self.raw_product_table = raw_product_table
         self.data_handler = None
         self.data_classifier = None
+
         # todo Итоговое предсказание и метрики качества (возможно лучше вынести в класс)
         self.final_prediction = None
         self.final_metrics = None
 
         self.n_workers = n_workers
 
+    # TODO ДОПИСАТЬ exceptionhandler
+    #@exceptionhandler
     def classify_products(self):
         """
         Основной метод, запускающий все этапы генерации данных
@@ -53,10 +57,10 @@ class Classifier:
         self.input_parameters_check()
         self.data_handler = DataHandler(self.raw_product_table)
         trainset_features, trainset_target, products_for_classification = self.data_handler.form_trainset()
-        return trainset_features, trainset_target
-        # self.classificator_fit()
-        # final_prediction = self.classificator_predict()
-        # return final_prediction
+        self.data_classifier = RandomForestModel(trainset_features, trainset_target)
+        self.data_classifier.prepare_model()
+        final_prediction = self.data_classifier.predict_classes(products_for_classification)
+        return final_prediction
 
     def input_parameters_check(self) -> bool:
         """
@@ -80,9 +84,3 @@ class Classifier:
             logger.error('Отсутвуют данные для выполнения предсказания класса!')
             raise NoPredictionsDataException('Отсутвуют данные для выполнения предсказания класса!')
         return True
-
-    def classificator_fit(self):
-        self.data_classifier = Ran
-
-    def classificator_predict(self):
-        a = 1
