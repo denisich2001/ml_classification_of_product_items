@@ -1,9 +1,10 @@
+import numpy as np
 import pandas as pd
 from loguru import logger
 
 from nltk.corpus import stopwords
 from sklearn.decomposition import PCA
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import OneHotEncoder
 from imblearn.over_sampling import RandomOverSampler
 from sklearn.feature_extraction.text import TfidfVectorizer
 
@@ -33,9 +34,11 @@ class DataHandler:
         self.input_table_types_dict = input_table_types_dict
         # Вид текущего датасета (train/test)
         self.dataset_type = None
-        # Сохраняем pca и vectorizer, чтобы обучить их на train выборке, а потом использовать на test
+        # Сохраняем pca, vectorizer, vocab и encoder, чтобы обучить их на train выборке, а потом использовать на test
         self.vectorizer = None
+        self.encoder = None
         self.pca = None
+        self.vocab = None
         # Переменные для итогового трейнсета после всех обработок
         self.final_dataset_features = None
         self.final_dataset_target = None
@@ -98,9 +101,6 @@ class DataHandler:
         if print_logs:
             logger.info('Устраним несбалансированность классов.')
         trainset = original_dataset.copy()
-        if print_logs:
-            logger.debug(f'2 самых частых и самых редких класса до балансировки:\n'
-                         f'{trainset.value_counts()[:2]}\n{trainset.value_counts()[-2:]}')
         ros = RandomOverSampler()
         balanced_features, balanced_target = ros.fit_resample(
             trainset.drop(TargetColumnName, axis=1),
@@ -125,18 +125,24 @@ class DataHandler:
         original_products_for_classification - данные для предсказания
         """
         trainset = original_dataset.copy()
-        if print_logs:
-            logger.info('Снизим размерность используя метод главных компонент.')
-            logger.debug(f'Размерность до: {trainset.shape}')
-        #if self.dataset_type == 'train':
-        #    self.pca = PCA(n_components=PCAComponentsNumber)
-        #    self.pca.fit(trainset)
-        self.pca = PCA(n_components=PCAComponentsNumber)
-        self.pca.fit(trainset)
+        trainset = trainset[sorted(trainset.columns)]
+        if self.dataset_type == 'train':
+            self.pca = PCA(n_components=PCAComponentsNumber)
+            self.pca.fit(trainset)
+        else:
+            # Исправим разницу в колонках между train и test, чтобы снижать размерность test на уже обученной pca
+            for feature in trainset.columns:
+                if feature not in self.pca.feature_names_in_:
+                    trainset = trainset.drop(feature, axis=1)
+                    logger.debug(f'feature to drop: {feature}')
+            for feature in self.pca.feature_names_in_:
+                if feature not in trainset.columns:
+                    feature_to_add = pd.DataFrame(0, index=trainset.index, columns=[feature])
+                    trainset = trainset.join(feature_to_add)
+            trainset = trainset[sorted(trainset.columns)]
+            logger.debug(f'Размерность после: {trainset.shape}')
+
         reduced_trainset = pd.DataFrame(self.pca.transform(trainset))
-        if print_logs:
-            logger.debug(f'Размерность после: {reduced_trainset.shape}')
-            logger.debug(f'PCA explained variance ratio:\n {self.pca.explained_variance_ratio_}')
         return reduced_trainset
 
     def encode_features(
@@ -159,10 +165,12 @@ class DataHandler:
             else:
                 handled_feature = pd.DataFrame(product_table[feature])
             handled_feature.columns = [str(col) + '_' + str(feature) for col in handled_feature.columns]
-            product_table_encoded = product_table_encoded.join(handled_feature)
-
+            if self.input_table_types_dict.get(feature) == 'Кат':
+                logger.debug(handled_feature.columns)
+                product_table_encoded = product_table_encoded.join(handled_feature)
+        logger.debug(product_table_encoded)
         #TODO УБРАТЬ СЛЕДУЮЩУЮ СТРОЧКУ И ОТЛАДИТЬ БЕЗ НЕЕ
-        product_table_encoded = product_table_encoded.fillna(0)
+        #product_table_encoded = product_table_encoded.fillna(0)
         # Т.к. мы пересобирали датасет заново во время кодирования => перепроверим на наличие пропущеных значений
         if product_table_encoded.isna().sum().sum() > 0:
             if print_logs:
@@ -176,9 +184,20 @@ class DataHandler:
         """
         Метод кодирования категориального фактора - используем OneHotEncoding
         """
-        cat_feature = cat_feature.astype(str)
-        cat_feature_encoded = pd.get_dummies(cat_feature)
-        return cat_feature_encoded
+        cat_feature = cat_feature.astype(str).values.reshape(-1, 1)
+
+        if self.dataset_type == 'train':
+            self.encoder = OneHotEncoder(handle_unknown='ignore', sparse_output=False)
+            self.encoder.fit(cat_feature)
+        cat_feature_encoded = pd.DataFrame(
+            self.encoder.transform(cat_feature),
+            columns=self.encoder.get_feature_names_out()
+        )
+        final_cat_feature_encoded = cat_feature_encoded.drop(
+            [col for col in cat_feature_encoded.columns if cat_feature_encoded[col].sum() == 0],
+            axis=1
+        )
+        return final_cat_feature_encoded
 
     def handle_text_feature(self, text_feature: pd.Series):
         """
@@ -195,7 +214,20 @@ class DataHandler:
                 analyzer='word',
                 stop_words=russian_stopwords
             )
-            self.vectorizer.fit(processed_text_feature)
-        vectorized_text_feature = pd.DataFrame(self.vectorizer.transform(processed_text_feature).toarray())
+            vectorized_text_feature = pd.DataFrame(self.vectorizer.fit_transform(processed_text_feature).toarray())
+            self.vocab = self.vectorizer.vocabulary_
+        else:
+            self.vectorizer = TfidfVectorizer(
+                max_features=100,
+                vocabulary=self.vocab,
+                analyzer='word',
+                stop_words=russian_stopwords
+            )
+            vectorized_text_feature = pd.DataFrame(self.vectorizer.fit_transform(processed_text_feature).toarray())
         vectorized_text_feature.columns = pd.Series(self.vectorizer.get_feature_names_out())
         return vectorized_text_feature
+
+    #def fit_TfidfVectorizers(self, ):
+    #    """
+    #    Т.к. данные
+    #    """

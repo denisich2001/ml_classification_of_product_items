@@ -27,14 +27,15 @@ class RandomForestModel(ClassificatorModelInterface):
         * Обучение модели
         """
         logger.info('Начинаем обучение модели случайного леса.')
-        super().prepare_model()
+        accuracy = super().prepare_model()
         logger.info('Обучение модели закончено.')
+        return accuracy
 
     @staticmethod
     def get_params(trial):
         # todo допилить
-        max_depth = trial.suggest_int('max_depth', 1, 13, step=3)
-        n_estimators = trial.suggest_int('n_estimators', 50, 150, step=5)
+        max_depth = trial.suggest_int('max_depth', 5, 150, step=5)
+        n_estimators = trial.suggest_int('n_estimators', 50, 1000, step=10)
         #min_samples_leaf = trial.suggest_int()
         #min_samples_split = trial.suggest_int()
         return {
@@ -51,7 +52,6 @@ class RandomForestModel(ClassificatorModelInterface):
         """
         # TODO ДОПИЛИТЬ
         params = self.get_params(trial)
-        #logger.debug(f'Current params: {params}')
         rf_model = RandomForestClassifier(**params)
         logger.debug(f'Проверим гиперпараметры модели: {params}')
         cross_validation_mean_accuracy = super().cross_validation(
@@ -60,5 +60,10 @@ class RandomForestModel(ClassificatorModelInterface):
         return cross_validation_mean_accuracy
     
     def fit_model(self, train_x, train_y):
-        self.classifier_model = RandomForestClassifier(self.model_best_params)
+        logger.info('Обучаем итоговую версию модели')
+        if self.model_best_params:
+            self.classifier_model = RandomForestClassifier(**(self.model_best_params))
+        else:
+            self.classifier_model = RandomForestClassifier()
         super().fit_model(train_x, train_y)
+        logger.info('Итоговая версия модели обучена!')

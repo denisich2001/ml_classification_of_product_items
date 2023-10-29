@@ -49,9 +49,9 @@ class ClassificatorModelInterface(ABC):
         train_x, test_x, train_y, test_y = self.trainset_train_test_split()
         self.params_tuner(train_x, train_y)
         self.fit_model(train_x, train_y)
-        self.check_quality(test_x, test_y)
+        return self.check_quality(test_x, test_y)
 
-    def params_tuner(self, train_x, train_y, n_trials: int = 10):
+    def params_tuner(self, train_x, train_y, n_trials: int = 1):
         """
         Метод обучения модели:
         * Тьюнинг гиперпараметров с кросс-валидацией
@@ -76,7 +76,8 @@ class ClassificatorModelInterface(ABC):
         """
         logger.debug(f'Начинаем кросс-валидацию. Количество разбиений: {СVSplitsNumber}')
         kfold = KFold(n_splits=СVSplitsNumber, shuffle=True)
-        cv_scores = np.array
+        cv_scores = []
+        ind = 0
         for train_index, test_index in kfold.split(trainset_features):
             train_data = pd.concat([trainset_features.iloc[train_index], trainset_target.iloc[train_index]], axis=1)
             test_data = pd.concat([trainset_features.iloc[test_index], trainset_target.iloc[test_index]], axis=1)
@@ -85,18 +86,19 @@ class ClassificatorModelInterface(ABC):
             test_x, test_y = temp_data_handler.prepare_prediction_or_test_data(test_data)
             clf_model.fit(train_x, train_y)
             predicted_test_y = clf_model.predict(test_x)
-            np.append(cv_scores, accuracy_score(test_y, predicted_test_y))
+            logger.debug(f'Accuracy score {ind}: {accuracy_score(test_y, predicted_test_y)}')
+            cv_scores.append(accuracy_score(test_y, predicted_test_y))
+        logger.debug(f'cv_scores: {cv_scores}')
         cross_validation_mean_accuracy = np.mean(cv_scores)
         logger.info(f'Средняя accuracy на кросс-валидации: {cross_validation_mean_accuracy}')
         return cross_validation_mean_accuracy
 
     def fit_model(self, original_train_x, original_train_y):
         """
-
+        Метод тренировки модели с уже обученными
         """
         original_train_data = pd.concat([original_train_x, original_train_y], axis=1)
-        temp_data_handler = DataHandler(self.input_table_types_dict)
-        train_x, train_y = temp_data_handler.prepare_prediction_or_test_data(original_train_data, print_logs=True)
+        train_x, train_y = self.main_data_handler.prepare_traindata(original_train_data, print_logs=True)
         self.classifier_model.fit(train_x, train_y)
 
     def predict_classes(self, original_products_for_classification):
@@ -112,25 +114,20 @@ class ClassificatorModelInterface(ABC):
         predicted_classes_df = pd.DataFrame(predicted_classes)
         return predicted_classes_df
 
-    def check_quality(self, test_x, test_correct_y):
+    def check_quality(self, test_x, test_y):
         """
         Метод оценки качества классификациии обученной модели
         """
-        # TODO Добавить TFidVectorizer сюда
-
-        # TODO Добавить PCA сюда
-        #train_predicted_labels = self.classifier_model.predict(train_x)
+        test_x, test_correct_y = self.main_data_handler.prepare_prediction_or_test_data(
+            pd.concat([test_x, test_y], axis=1),
+            True
+        )
         test_predicted_labels = self.classifier_model.predict(test_x)
-
-        #accuracy_train = accuracy_score(train_correct_y, train_predicted_labels)
         accuracy_test = accuracy_score(test_correct_y, test_predicted_labels)
-        #report = classification_report(test_correct_y, test_predicted_labels)
+        logger.info(f"Accuracy на тестовой выборке:\n{accuracy_test}")
+        return accuracy_test
 
-        #logger.debug(f"Accuracy на тренировочной выборке:\n{accuracy_train}")
-        logger.debug(f"Accuracy на тестовой выборке:\n{accuracy_test}")
-        #print("Classification Report:\n", report)
-
-    def trainset_train_test_split(self, test_size_value: float = 0.3, print_logs: bool = False):
+    def trainset_train_test_split(self, test_size_value: float = 0.2, print_logs: bool = False):
         """
         Метод разбиения трейнсета на обучающую и тестовую выборки
 
@@ -138,9 +135,6 @@ class ClassificatorModelInterface(ABC):
         """
         if print_logs:
             logger.info(f'Разбиваем выборку на train/test. Размер теста - {test_size_value}')
-
-        print(f'Размеры начального датасета: {self.trainset_features.shape}')
-        print(f'Размеры начального датасета: {self.trainset_target}')
 
         train_x, test_x, train_y, test_y = train_test_split(
             self.trainset_features,

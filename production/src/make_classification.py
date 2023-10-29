@@ -29,14 +29,6 @@ class Classifier:
             - Все остальные столбцы будут проигнорированны
     n_workers - количество процессоров доступных для выполнения кода (по умолчанию = 1)
     """
-
-    # todo Добавить:
-    # * Проверить работу exceptions
-    # * Проверку на известный тип данных колонки
-    # * Декоратор для обработки ошибок
-    # * FastApi
-    # * Добавить логгирование
-
     def __init__(self, raw_product_table: pd.DataFrame = None, n_workers: int = 1):
         self.raw_product_table = raw_product_table
         self.data_handler = None
@@ -44,12 +36,10 @@ class Classifier:
 
         # todo Итоговое предсказание и метрики качества (возможно лучше вынести в класс)
         self.final_prediction = None
-        self.final_metrics = None
+        self.final_accuracy = None
 
         self.n_workers = n_workers
 
-    # TODO ДОПИСАТЬ exceptionhandler
-    #@exceptionhandler
     def classify_products(self):
         """
         Основной метод, запускающий все этапы генерации данных:
@@ -69,9 +59,12 @@ class Classifier:
             product_table_for_train,
             input_table_types_dict
         )
-        self.data_classifier.prepare_model()
-        final_prediction = self.data_classifier.predict_classes(product_table_for_classification)
-        return final_prediction
+        self.final_accuracy = self.data_classifier.prepare_model()
+        self.final_prediction = self.data_classifier.predict_classes(product_table_for_classification)
+        return {
+            'dataframe': self.final_prediction,
+            'accuracy': self.final_accuracy
+        }
 
     def input_parameters_check(self) -> bool:
         """
