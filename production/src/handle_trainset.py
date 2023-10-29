@@ -79,7 +79,6 @@ class DataHandler:
         self.final_dataset_target = primary_dataset[TargetColumnName]
         no_target_dataset = primary_dataset.drop(TargetColumnName, axis=1)
         encoded_dataset = self.encode_features(no_target_dataset, print_logs)
-        logger.debug(f'Размеры тестового {encoded_dataset.shape} и {self.final_dataset_target.size}')
         self.final_dataset_features = self.pca_transformation(
             encoded_dataset,
             print_logs
@@ -151,20 +150,16 @@ class DataHandler:
         if print_logs:
             logger.info('Начинаем кодирование факторов.')
         product_table = original_dataset.copy()
-        logger.debug(f'Размеры product_table {product_table.shape}')
-        logger.debug(f'input_table_types_dict: {self.input_table_types_dict}')
-        product_table_encoded = pd.DataFrame()
+        product_table_encoded = pd.DataFrame(index=original_dataset.index)
         for feature in self.input_table_types_dict:
             if self.input_table_types_dict.get(feature) == 'Стр':
                 handled_feature = self.handle_text_feature(product_table[feature])
             elif self.input_table_types_dict.get(feature) == 'Кат':
                 handled_feature = self.handle_cat_feature(product_table[feature])
-                logger.debug(f'feature:{feature}. handled_feature: {handled_feature.shape}')
             else:
                 handled_feature = pd.DataFrame(product_table[feature])
-            #handled_feature.columns = [str(col) + '_' + str(feature) for col in handled_feature.columns]
-            product_table_encoded = pd.concat([product_table_encoded, handled_feature], axis=1)
-            logger.debug(f'Feature: {feature}. Размеры: {product_table_encoded.shape}')
+            handled_feature.columns = [str(col) + '_' + str(feature) for col in handled_feature.columns]
+            product_table_encoded = product_table_encoded.join(handled_feature)
 
         #TODO УБРАТЬ СЛЕДУЮЩУЮ СТРОЧКУ И ОТЛАДИТЬ БЕЗ НЕЕ
         product_table_encoded = product_table_encoded.fillna(0)
@@ -181,11 +176,8 @@ class DataHandler:
         """
         Метод кодирования категориального фактора - используем OneHotEncoding
         """
-        #logger.debug(f'cat_feature before: {cat_feature.size}')
         cat_feature = cat_feature.astype(str)
         cat_feature_encoded = pd.get_dummies(cat_feature)
-        #logger.debug(f'cat_feature after: {cat_feature_encoded.size}')
-        #logger.debug(f'cat_feature: {pd.concat([cat_feature,cat_feature_encoded], axis = 1)}')
         return cat_feature_encoded
 
     def handle_text_feature(self, text_feature: pd.Series):

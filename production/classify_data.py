@@ -9,6 +9,6 @@ def predict_classes(raw_product_table: pd.DataFrame = None):
     return predicted_classes
 
 
-product_table = pd.read_excel('data/paper_classificator_data.xlsx')
+product_table = pd.read_excel('production/data/paper_classificator_data.xlsx')
 #product_table = pd.read_excel('data/tire_classificator_data.xlsx')
 logger.debug(f'\n{predict_classes(product_table).head()}')

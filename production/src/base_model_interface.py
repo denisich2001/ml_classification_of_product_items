@@ -83,11 +83,10 @@ class ClassificatorModelInterface(ABC):
             temp_data_handler = DataHandler(self.input_table_types_dict)
             train_x, train_y = temp_data_handler.prepare_traindata(train_data)
             test_x, test_y = temp_data_handler.prepare_prediction_or_test_data(test_data)
-            logger.debug(f'Размеры выборок: {train_x.shape}, {train_y.size}, {test_x.shape}, {test_y.size}')
             clf_model.fit(train_x, train_y)
             predicted_test_y = clf_model.predict(test_x)
             np.append(cv_scores, accuracy_score(test_y, predicted_test_y))
-        cross_validation_mean_accuracy = cv_scores.mean()
+        cross_validation_mean_accuracy = np.mean(cv_scores)
         logger.info(f'Средняя accuracy на кросс-валидации: {cross_validation_mean_accuracy}')
         return cross_validation_mean_accuracy
 
