@@ -1,110 +1,209 @@
 import pandas as pd
 from loguru import logger
+
+from nltk.corpus import stopwords
 from sklearn.decomposition import PCA
+from sklearn.preprocessing import LabelEncoder
 from imblearn.over_sampling import RandomOverSampler
-from production.src.handle_raw_product_table import RawProductsTableHandler
-from production.src.utils.errors import NoPredictionsDataException
-from production.config import TargetNameColumn
+from sklearn.feature_extraction.text import TfidfVectorizer
+
+from production.config import TargetColumnName
+from production.config import PCAComponentsNumber
+from production.src.utils.errors import EmptyValuesAfterEncoding
+from production.src.utils.features_preprocessing import text_feature_preprocessing
+
+russian_stopwords = stopwords.words("russian")
 
 
 class DataHandler:
     """
-    Класс для обработки сырых данных, формирования и хранения трейнсета:
-        * Хранение сформированного трейнсета, таргета
-        * Обработка сырых данных
-        * Хранение данные для которых будем строить итоговое предсказание класса
+    Класс обработки данных для работы с моделью.
+    Состоит из двух независимых основных методов:
+    1. Подготовки данных для тренировки модели:
+        * Кодирование строковых и категориальных факторов (fit и transform TfidfVectorizer)
         * Устранение несбалансированности классов
-        * PCA
+        * Снижение размерности с помощью PCA (fit и transform)
+    2. Подготовки данных для тестирования модели - все те же методы (кроме устранения несбалансированности),
+        только используются уже обученные TfidfVectorizer и PCA
     """
-    def __init__(self, raw_product_table: pd.DataFrame) -> None:
-        self.raw_product_table = raw_product_table.copy()
 
+    def __init__(
+            self, input_table_types_dict
+    ) -> None:
+        self.input_table_types_dict = input_table_types_dict
+        # Вид текущего датасета (train/test)
+        self.dataset_type = None
+        # Сохраняем pca и vectorizer, чтобы обучить их на train выборке, а потом использовать на test
+        self.vectorizer = None
+        self.pca = None
         # Переменные для итогового трейнсета после всех обработок
-        self.trainset_features = None
-        self.trainset_target = None
+        self.final_dataset_features = None
+        self.final_dataset_target = None
 
-        # Данные для которых будет выполняться итоговое предсказание класса
-        self.products_for_classification = None
-         
-    def form_trainset(self):
+    def prepare_traindata(self, original_dataset, print_logs: bool = False):
         """
-        Основной метод формирования трейнсета
+        Метод подготовки данных для тренировки.
+
         Returns
         -------
         trainset_features и trainset_target - факторы и таргет сформированного трейнсета
         """
-        logger.info('Начинаем формирование трейнсета.')
-        handled_product_table = RawProductsTableHandler(self.raw_product_table).handle_raw_product_table()
-        primary_trainset, products_for_classification = DataHandler.separate_predictions_data_from_train(
-            handled_product_table
+        if print_logs:
+            logger.info('Начинаем подготовку тренировочных данных.')
+        self.dataset_type = 'train'
+        primary_dataset = original_dataset.copy()
+        balanced_dataset = DataHandler.trainset_target_balancing(primary_dataset, print_logs)
+        self.final_dataset_target = balanced_dataset[TargetColumnName]
+        no_target_dataset = balanced_dataset.drop(TargetColumnName, axis=1)
+        encoded_dataset = self.encode_features(no_target_dataset, print_logs)
+        self.final_dataset_features = self.pca_transformation(
+            encoded_dataset,
+            print_logs
         )
-        balanced_trainset = DataHandler.trainset_target_balancing(primary_trainset)
-        self.trainset_target = balanced_trainset[TargetNameColumn]
-        balanced_trainset = balanced_trainset.drop(TargetNameColumn, axis=1)
-        final_trainset, final_products_for_classification = DataHandler.pca_transformation(
-            balanced_trainset,
-            products_for_classification
+        if print_logs:
+            logger.info('Тренировочные данные успешно подготовлены.')
+        return self.final_dataset_features, self.final_dataset_target
+
+    def prepare_prediction_or_test_data(self, original_dataset, print_logs: bool = False):
+        """
+        Метод подготовки данных для теста или предсказания.
+
+        Returns
+        -------
+        trainset_features и trainset_target - факторы и таргет сформированного трейнсета
+        """
+        if print_logs:
+            logger.info('Начинаем подготовку данных для предсказания.')
+        self.dataset_type = 'test'
+        primary_dataset = original_dataset.copy()
+        self.final_dataset_target = primary_dataset[TargetColumnName]
+        no_target_dataset = primary_dataset.drop(TargetColumnName, axis=1)
+        encoded_dataset = self.encode_features(no_target_dataset, print_logs)
+        logger.debug(f'Размеры тестового {encoded_dataset.shape} и {self.final_dataset_target.size}')
+        self.final_dataset_features = self.pca_transformation(
+            encoded_dataset,
+            print_logs
         )
-        self.trainset_features = final_trainset
-        self.products_for_classification = final_products_for_classification
-        logger.info('Трейнсет успешно сформирован.')
-        return self.trainset_features, self.trainset_target, self.products_for_classification
+        if print_logs:
+            logger.info('Данные успешно подготовлены.')
+        return self.final_dataset_features, self.final_dataset_target
 
     @staticmethod
-    def separate_predictions_data_from_train(original_product_table: pd.DataFrame):
-        """
-        Метод отделения тренировочных данных от данных для предсказания (строки с пустыми значениями в колонке класса)
-        Parameters
-        ----------
-        original_product_table - основной датасет (пока трейнсет и данные для предсказания - вместе)
-        """
-        logger.info('Отделяем тренировочные данные от данных, для которых нужно выполнить предсказание класса.')
-        product_table = original_product_table.copy()
-        products_for_classification = product_table[product_table[TargetNameColumn].isna()].drop(TargetNameColumn, axis=1)
-        product_table_for_train = product_table[product_table['ID класса (ТАРГЕТ)'].notna()]
-        logger.info(f'{products_for_classification.shape[0]} строк для выполнения классификации.')
-        logger.debug(f'Пустых значений в данных для классификации:\n{products_for_classification.isna().sum()}')
-        return product_table_for_train, products_for_classification
-
-    @staticmethod
-    def trainset_target_balancing(original_trainset: pd.DataFrame):
+    def trainset_target_balancing(original_dataset: pd.DataFrame, print_logs: bool = False):
         """
         Метод устранения несбалансированности классов. Используем пересемплирование.
         Parameters
         ----------
-        original_trainset - основной трейнсет
+        original_dataset - основной трейнсет
         """
-        logger.info('Устраним несбалансированность классов.')
-        trainset = original_trainset.copy()
-        logger.debug(f'2 самых частых и самых редких класса до балансировки:\n'
-                     f'{trainset.value_counts()[:2]}\n{trainset.value_counts()[-2:]}')
+        if print_logs:
+            logger.info('Устраним несбалансированность классов.')
+        trainset = original_dataset.copy()
+        if print_logs:
+            logger.debug(f'2 самых частых и самых редких класса до балансировки:\n'
+                         f'{trainset.value_counts()[:2]}\n{trainset.value_counts()[-2:]}')
         ros = RandomOverSampler()
         balanced_features, balanced_target = ros.fit_resample(
-            trainset.drop(TargetNameColumn, axis=1),
-            trainset[TargetNameColumn]
+            trainset.drop(TargetColumnName, axis=1),
+            trainset[TargetColumnName]
         )
         balanced_trainset = pd.concat([balanced_features, balanced_target], axis=1)
-        logger.info('Устранили несбалансированность классов.')
+        if print_logs:
+            logger.info('Устранили несбалансированность классов.')
         return balanced_trainset
 
-    @staticmethod
-    def pca_transformation(original_trainset: pd.DataFrame, original_products_for_classification: pd.DataFrame):
+    def pca_transformation(
+            self,
+            original_dataset: pd.DataFrame,
+            print_logs: bool = False
+    ):
         """
         Метод снижения размерности трейнсета методом главных компонент.
+
         Parameters
         ----------
-        original_trainset - основной трейнсет
+        original_dataset - основной трейнсет
         original_products_for_classification - данные для предсказания
         """
-        trainset = original_trainset.copy()
-        products_for_classification = original_products_for_classification.copy()
-        logger.info('Снизим размерность используя метод главных компонент.')
-        logger.debug(f'Размерность трейнсета до: {trainset.shape}')
-        pca = PCA(n_components=20)
-        reduced_trainset = pd.DataFrame(pca.fit_transform(trainset))
-        reduced_products_for_classification = pd.DataFrame(pca.transform(products_for_classification))
-        logger.debug(f'Размерность трейнсета после: {reduced_trainset.shape}')
-        logger.debug(f'PCA explained variance ratio:\n {pca.explained_variance_ratio_}')
-        logger.debug(f'Размерность данных для классификации после снижения: {reduced_products_for_classification.shape}')
-        return reduced_trainset, reduced_products_for_classification
+        trainset = original_dataset.copy()
+        if print_logs:
+            logger.info('Снизим размерность используя метод главных компонент.')
+            logger.debug(f'Размерность до: {trainset.shape}')
+        #if self.dataset_type == 'train':
+        #    self.pca = PCA(n_components=PCAComponentsNumber)
+        #    self.pca.fit(trainset)
+        self.pca = PCA(n_components=PCAComponentsNumber)
+        self.pca.fit(trainset)
+        reduced_trainset = pd.DataFrame(self.pca.transform(trainset))
+        if print_logs:
+            logger.debug(f'Размерность после: {reduced_trainset.shape}')
+            logger.debug(f'PCA explained variance ratio:\n {self.pca.explained_variance_ratio_}')
+        return reduced_trainset
 
+    def encode_features(
+            self,
+            original_dataset: pd.DataFrame,
+            print_logs: bool = False
+    ):
+        """
+        Метод кодирования строковых и категориальных факторов модели
+        """
+        if print_logs:
+            logger.info('Начинаем кодирование факторов.')
+        product_table = original_dataset.copy()
+        logger.debug(f'Размеры product_table {product_table.shape}')
+        logger.debug(f'input_table_types_dict: {self.input_table_types_dict}')
+        product_table_encoded = pd.DataFrame()
+        for feature in self.input_table_types_dict:
+            if self.input_table_types_dict.get(feature) == 'Стр':
+                handled_feature = self.handle_text_feature(product_table[feature])
+            elif self.input_table_types_dict.get(feature) == 'Кат':
+                handled_feature = self.handle_cat_feature(product_table[feature])
+                logger.debug(f'feature:{feature}. handled_feature: {handled_feature.shape}')
+            else:
+                handled_feature = pd.DataFrame(product_table[feature])
+            #handled_feature.columns = [str(col) + '_' + str(feature) for col in handled_feature.columns]
+            product_table_encoded = pd.concat([product_table_encoded, handled_feature], axis=1)
+            logger.debug(f'Feature: {feature}. Размеры: {product_table_encoded.shape}')
+
+        #TODO УБРАТЬ СЛЕДУЮЩУЮ СТРОЧКУ И ОТЛАДИТЬ БЕЗ НЕЕ
+        product_table_encoded = product_table_encoded.fillna(0)
+        # Т.к. мы пересобирали датасет заново во время кодирования => перепроверим на наличие пропущеных значений
+        if product_table_encoded.isna().sum().sum() > 0:
+            if print_logs:
+                logger.error('Появились пустые значения после кодирования переменных')
+            raise EmptyValuesAfterEncoding('Появились пустые значения после кодирования переменных!')
+        if print_logs:
+            logger.info(f'Получилось {product_table_encoded.columns.size} факторов после кодирования')
+        return product_table_encoded
+
+    def handle_cat_feature(self, cat_feature: pd.Series):
+        """
+        Метод кодирования категориального фактора - используем OneHotEncoding
+        """
+        #logger.debug(f'cat_feature before: {cat_feature.size}')
+        cat_feature = cat_feature.astype(str)
+        cat_feature_encoded = pd.get_dummies(cat_feature)
+        #logger.debug(f'cat_feature after: {cat_feature_encoded.size}')
+        #logger.debug(f'cat_feature: {pd.concat([cat_feature,cat_feature_encoded], axis = 1)}')
+        return cat_feature_encoded
+
+    def handle_text_feature(self, text_feature: pd.Series):
+        """
+        Метод обработки и кодирования строкового фактора:
+        - Проводим препроцессинг
+        - Используем TFidfVectorizer
+        """
+        processed_text_feature = text_feature_preprocessing(text_feature)
+        # Если dataset_type == 'train' => мы кодируем тренировочные данные,
+        # Иначе - тестовые данные, для них нужно использовать уже обученный
+        if self.dataset_type == 'train':
+            self.vectorizer = TfidfVectorizer(
+                max_features=100,
+                analyzer='word',
+                stop_words=russian_stopwords
+            )
+            self.vectorizer.fit(processed_text_feature)
+        vectorized_text_feature = pd.DataFrame(self.vectorizer.transform(processed_text_feature).toarray())
+        vectorized_text_feature.columns = pd.Series(self.vectorizer.get_feature_names_out())
+        return vectorized_text_feature

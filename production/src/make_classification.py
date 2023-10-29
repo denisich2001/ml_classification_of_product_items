@@ -2,12 +2,13 @@ import pandas as pd
 import numpy as np
 from loguru import logger
 
-from production.config import TargetNameColumn
+from production.config import TargetColumnName
 from production.src.handle_trainset import DataHandler
 from production.src.random_forest_model import RandomForestModel
 from production.src.utils.errors import NoProductsDataException
 from production.src.utils.errors import NoTargetColumnException
 from production.src.utils.errors import NoPredictionsDataException
+from production.src.handle_raw_product_table import RawProductsTableHandler
 
 
 class Classifier:
@@ -51,15 +52,25 @@ class Classifier:
     #@exceptionhandler
     def classify_products(self):
         """
-        Основной метод, запускающий все этапы генерации данных
+        Основной метод, запускающий все этапы генерации данных:
+        * Обработка сырых данных
+        * Отделение тренировочных данных от данных для предсказания
+        * Подбор и обучение модели
+        * Выполнение предсказания
         """
         logger.info("Начало работы алгоритма.")
         self.input_parameters_check()
-        self.data_handler = DataHandler(self.raw_product_table)
-        trainset_features, trainset_target, products_for_classification = self.data_handler.form_trainset()
-        self.data_classifier = RandomForestModel(trainset_features, trainset_target)
+        handled_product_table, input_table_types_dict = \
+            RawProductsTableHandler(self.raw_product_table).handle_raw_product_table()
+        product_table_for_train, product_table_for_classification = \
+            RawProductsTableHandler.separate_predictions_data_from_train(handled_product_table)
+
+        self.data_classifier = RandomForestModel(
+            product_table_for_train,
+            input_table_types_dict
+        )
         self.data_classifier.prepare_model()
-        final_prediction = self.data_classifier.predict_classes(products_for_classification)
+        final_prediction = self.data_classifier.predict_classes(product_table_for_classification)
         return final_prediction
 
     def input_parameters_check(self) -> bool:
@@ -74,12 +85,12 @@ class Classifier:
             logger.error('Отсутствуют данные обучения модели классификации!')
             raise NoProductsDataException('Отсутствуют данные обучения модели классификации!')
 
-        if TargetNameColumn not in self.raw_product_table.columns:
+        if TargetColumnName not in self.raw_product_table.columns:
             logger.error('Отсутствует колонка с идентификатором класса для предсказания!\n'
-                         f'Указанное название столбца с классом для предсказания: {TargetNameColumn}')
+                         f'Указанное название столбца с классом для предсказания: {TargetColumnName}')
             raise NoTargetColumnException('Отсутствует колонка с идентификатором класса для предсказания!')
 
-        data_for_predictions = self.raw_product_table[self.raw_product_table[TargetNameColumn].isna()]
+        data_for_predictions = self.raw_product_table[self.raw_product_table[TargetColumnName].isna()]
         if (data_for_predictions is None) or (data_for_predictions.size == 0):
             logger.error('Отсутвуют данные для выполнения предсказания класса!')
             raise NoPredictionsDataException('Отсутвуют данные для выполнения предсказания класса!')

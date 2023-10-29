@@ -1,6 +1,6 @@
 import pandas as pd
 from loguru import logger
-from config import TargetNameColumn
+from config import TargetColumnName
 from src.make_classification import Classifier
 
 

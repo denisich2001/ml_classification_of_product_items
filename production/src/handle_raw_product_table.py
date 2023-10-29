@@ -1,17 +1,11 @@
 import re
 import pandas as pd
 from loguru import logger
-from nltk.corpus import stopwords
-from sklearn.preprocessing import LabelEncoder
-from production.config import TargetNameColumn
-from production.config import OneHotEncodingLimit
-from sklearn.feature_extraction.text import TfidfVectorizer
+
+from production.config import TargetColumnName
 from production.src.utils.errors import NumberFeatureException
-from production.src.utils.errors import EmptyValuesAfterEncoding
 from production.src.utils.errors import UnknownColumnTypeException
 from production.src.utils.errors import IncorrectColumnNameException
-from production.src.utils.features_preprocessing import text_feature_preprocessing
-russian_stopwords = stopwords.words("russian")
 
 
 class RawProductsTableHandler:
@@ -20,7 +14,6 @@ class RawProductsTableHandler:
         * Удаление лишних колонок
         * Выделение типов колонок
         * Заполнение пропусков
-        * Кодирование переменных
 
     Parameters
     ----------
@@ -40,17 +33,16 @@ class RawProductsTableHandler:
         """
         logger.info('Начинаем первичную обработку таблицы с продуктами.')
         # На время обработки отделим столбец с меткой класса
-        products_target_column = self.raw_product_table[TargetNameColumn]
-        product_table = self.raw_product_table.copy().drop(TargetNameColumn, axis=1)
+        products_target_column = self.raw_product_table[TargetColumnName]
+        product_table = self.raw_product_table.copy().drop(TargetColumnName, axis=1)
 
         product_table_without_extra_columns = self.delete_extra_columns(product_table)
         product_table_with_formatted_features = self.format_feature_types(product_table_without_extra_columns)
-        product_table_without_na = self.fill_na_in_features(product_table_with_formatted_features)
-        self.final_product_table = self.encode_features(product_table_without_na)
+        self.final_product_table = self.fill_na_in_features(product_table_with_formatted_features)
 
         # Вернем столбец с меткой класса
-        self.final_product_table[TargetNameColumn] = products_target_column
-        return self.final_product_table
+        self.final_product_table[TargetColumnName] = products_target_column
+        return self.final_product_table, self.input_table_types_dict
 
     def delete_extra_columns(self, original_product_table: pd.DataFrame):
         """
@@ -145,65 +137,19 @@ class RawProductsTableHandler:
             f'Количество пустых значений в столбцах после заполнения пропусков: \n{product_table.isna().sum()}')
         return product_table
 
-    def encode_features(self, original_product_table: pd.DataFrame):
+    @staticmethod
+    def separate_predictions_data_from_train(original_product_table: pd.DataFrame):
         """
-        Метод кодирования факторов модели
+        Метод отделения тренировочных данных от данных для предсказания (строки с пустыми значениями в колонке класса)
+
+        Parameters
+        ----------
+        original_product_table - основной датасет (пока трейнсет и данные для предсказания - вместе)
         """
-        logger.info('Начинаем кодирование факторов.')
+        logger.info('Отделяем тренировочные данные от данных, для которых нужно выполнить предсказание класса.')
         product_table = original_product_table.copy()
-        product_table_encoded = pd.DataFrame()
-        for feature in self.input_table_types_dict:
-            if self.input_table_types_dict.get(feature) == 'Стр':
-                handled_feature = self.handle_text_feature(product_table[feature])
-            elif self.input_table_types_dict.get(feature) == 'Кат':
-                handled_feature = self.handle_cat_feature(product_table[feature])
-            else:
-                handled_feature = pd.DataFrame(product_table[feature])
-            handled_feature.columns = [str(col) + '_' + str(feature) for col in handled_feature.columns]
-            product_table_encoded = pd.concat([product_table_encoded, handled_feature], axis=1)
-
-        # Т.к. мы пересобирали датасет заново во время кодирования => перепроверим на наличие пропущеных значений
-        if product_table_encoded.isna().sum().sum() > 0:
-            logger.error('Появились пустые значения после кодирования переменных')
-            raise EmptyValuesAfterEncoding('Появились пустые значения после кодирования переменных!')
-        logger.info(f'Получилось {product_table_encoded.columns.size} факторов после кодирования')
-        return product_table_encoded
-
-    def handle_cat_feature(self, cat_feature: pd.Series):
-        """
-        Метод кодирования категориального фактора
-        """
-        cat_feature = cat_feature.astype(str)
-        unique_values_count = cat_feature.drop_duplicates().size
-        if unique_values_count <= OneHotEncodingLimit:
-            # OneHotEncoding
-            cat_feature_encoded = pd.get_dummies(cat_feature)
-        else:
-            # LabelEncoding - чтобы сильно не увеличивать количество факторов
-            le = LabelEncoder()
-            cat_feature_encoded = pd.DataFrame(le.fit_transform(cat_feature))
-        return cat_feature_encoded
-
-    def handle_text_feature(self, text_feature: pd.Series):
-        """
-        Метод обработки и кодирования строкового фактора:
-        - Проводим препроцессинг
-        - Используем TFidfVectorizer
-        """
-        processed_text_feature = text_feature_preprocessing(text_feature)
-        vectorizer = TfidfVectorizer(
-            max_features=20,
-            analyzer='word',
-            stop_words=russian_stopwords
-        )
-        vectorizer.fit(processed_text_feature)
-        vectorized_text_feature = pd.DataFrame(vectorizer.transform(processed_text_feature).toarray())
-        vectorized_text_feature.columns = pd.Series(vectorizer.get_feature_names_out())
-        return vectorized_text_feature
-
-# Тестируем
-# productTable = pd.read_excel('tire_classificator_data.xlsx')
-
-# final_product_table = RawProductsTableHandler(productTable).handle_raw_product_table()
-# final_product_table.to_excel('tire_trainset_after_primary_handling.xlsx')#, encoding='cp1251')
-# todo ИЗМЕНИТЬ АЛГОРИТМ КОДИРОВАНИЯ ПРИЗНАКОВ
+        products_for_classification = product_table[product_table[TargetColumnName].isna()]#.drop(TargetNameColumn, axis=1)
+        product_table_for_train = product_table[product_table[TargetColumnName].notna()]
+        logger.info(f'{products_for_classification.shape[0]} строк для выполнения классификации.')
+        logger.debug(f'Пустых значений в данных для классификации:\n{products_for_classification.isna().sum()}')
+        return product_table_for_train, products_for_classification
