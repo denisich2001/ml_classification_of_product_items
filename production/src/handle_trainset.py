@@ -35,7 +35,7 @@ class DataHandler:
         # Вид текущего датасета (train/test)
         self.dataset_type = None
         # Сохраняем pca, vectorizer, vocab и encoder, чтобы обучить их на train выборке, а потом использовать на test
-        self.vectorizer = None
+        self.vectorizers = None
         self.encoder = None
         self.pca = None
         self.vocab = None
@@ -227,7 +227,9 @@ class DataHandler:
         vectorized_text_feature.columns = pd.Series(self.vectorizer.get_feature_names_out())
         return vectorized_text_feature
 
-    #def fit_TfidfVectorizers(self, ):
-    #    """
-    #    Т.к. данные
-    #    """
+    def fit_TfidfVectorizers(self, pro):
+        """
+        Т.к. мы всегда знаем во время обчения для каких данных будет строится предсказание =>
+        => обучим TfidfVectorizer для каждого текстового фактора на всех данных
+        """
+        self.vectorizers = их нужно сделать глобальными
