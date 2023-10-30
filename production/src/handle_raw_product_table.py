@@ -136,20 +136,3 @@ class RawProductsTableHandler:
         logger.debug(
             f'Количество пустых значений в столбцах после заполнения пропусков: \n{product_table.isna().sum()}')
         return product_table
-
-    @staticmethod
-    def separate_predictions_data_from_train(original_product_table: pd.DataFrame):
-        """
-        Метод отделения тренировочных данных от данных для предсказания (строки с пустыми значениями в колонке класса)
-
-        Parameters
-        ----------
-        original_product_table - основной датасет (пока трейнсет и данные для предсказания - вместе)
-        """
-        logger.info('Отделяем тренировочные данные от данных, для которых нужно выполнить предсказание класса.')
-        product_table = original_product_table.copy()
-        products_for_classification = product_table[product_table[TargetColumnName].isna()]#.drop(TargetNameColumn, axis=1)
-        product_table_for_train = product_table[product_table[TargetColumnName].notna()]
-        logger.info(f'{products_for_classification.shape[0]} строк для выполнения классификации.')
-        logger.debug(f'Пустых значений в данных для классификации:\n{products_for_classification.isna().sum()}')
-        return product_table_for_train, products_for_classification

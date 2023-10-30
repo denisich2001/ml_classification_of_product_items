@@ -52,15 +52,11 @@ class Classifier:
         self.input_parameters_check()
         handled_product_table, input_table_types_dict = \
             RawProductsTableHandler(self.raw_product_table).handle_raw_product_table()
-        product_table_for_train, product_table_for_classification = \
-            RawProductsTableHandler.separate_predictions_data_from_train(handled_product_table)
-
-        self.data_classifier = RandomForestModel(
-            product_table_for_train,
-            input_table_types_dict
-        )
+        data_handler = DataHandler(handled_product_table, input_table_types_dict)
+        trainset, dataset_for_classification = data_handler.prepare_dataset()
+        self.data_classifier = RandomForestModel(trainset)
         self.final_accuracy = self.data_classifier.prepare_model()
-        self.final_prediction = self.data_classifier.predict_classes(product_table_for_classification)
+        self.final_prediction = self.data_classifier.predict_classes(dataset_for_classification)
         return {
             'dataframe': self.final_prediction,
             'accuracy': self.final_accuracy
