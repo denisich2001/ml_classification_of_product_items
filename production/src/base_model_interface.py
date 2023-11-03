@@ -48,7 +48,7 @@ class ClassificatorModelInterface(ABC):
         """
         logger.info('Подбираем оптимальные гиперпараметры для модели')
         study = optuna.create_study(direction="maximize")
-        logger.debug(f'Размеры тренировочной выборки для кросс-валидации: {train_x.shape}')
+        logger.debug(f'Размеры тренировочной выборки для подбора гиперпараметров: {train_x.shape}')
         objective_func = lambda trial: self.objective(trial, train_x, train_y)
         study.optimize(objective_func, n_trials=OptunaTrialsNumber)
         # Сохраняем лучшие гиперпараметры

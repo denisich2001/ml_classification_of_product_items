@@ -54,9 +54,6 @@ class DataHandler:
     def trainset_target_balancing(original_dataset: pd.DataFrame):
         """
         Метод устранения несбалансированности классов. Используем пересемплирование.
-        Parameters
-        ----------
-        original_dataset - основной трейнсет
         """
         logger.info('Устраним несбалансированность классов.')
         dataset = original_dataset.copy()
@@ -78,10 +75,7 @@ class DataHandler:
         reduced_dataset = pd.DataFrame(pca.fit_transform(dataset))
         return reduced_dataset
 
-    def encode_features(
-            self,
-            original_dataset: pd.DataFrame,
-    ):
+    def encode_features(self, original_dataset: pd.DataFrame):
         """
         Метод кодирования строковых и категориальных факторов модели
         """
@@ -98,8 +92,6 @@ class DataHandler:
             handled_feature.columns = [str(col) + '_' + str(feature) for col in handled_feature.columns]
             if self.input_table_types_dict.get(feature) == 'Кат':
                 dataset_encoded = dataset_encoded.join(handled_feature)
-        #TODO УБРАТЬ СЛЕДУЮЩУЮ СТРОЧКУ И ОТЛАДИТЬ БЕЗ НЕЕ
-        #product_table_encoded = product_table_encoded.fillna(0)
         # Т.к. мы пересобирали датасет заново во время кодирования => перепроверим на наличие пропущеных значений
         if dataset_encoded.isna().sum().sum() > 0:
             logger.error('Появились пустые значения после кодирования переменных')
@@ -132,7 +124,7 @@ class DataHandler:
         vectorizer = TfidfVectorizer(
                 max_features=100,
                 analyzer='word',
-                stop_words=russian_stopwords
+                stop_words=russian_stopwords+["emptyvalue"]
         )
         vectorized_text_feature = pd.DataFrame(vectorizer.fit_transform(processed_text_feature).toarray())
         vectorized_text_feature.columns = pd.Series(vectorizer.get_feature_names_out())
@@ -146,7 +138,7 @@ class DataHandler:
         logger.info('Отделяем тренировочные данные от данных, для которых нужно выполнить предсказание класса.')
         product_table = original_product_table.copy()
         products_for_classification = product_table[
-            product_table[TargetColumnName].isna()]  # .drop(TargetNameColumn, axis=1)
+            product_table[TargetColumnName].isna()]
         product_table_for_train = product_table[product_table[TargetColumnName].notna()]
         logger.info(f'{products_for_classification.shape[0]} строк для выполнения классификации.')
         logger.debug(f'Пустых значений в данных для классификации:\n{products_for_classification.isna().sum()}')

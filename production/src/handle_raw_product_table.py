@@ -127,7 +127,7 @@ class RawProductsTableHandler:
             if self.input_table_types_dict.get(column) == 'Кат':
                 product_table.loc[product_table[column].isna(), column] = f'EmptyCat'
             elif self.input_table_types_dict.get(column) == 'Стр':
-                product_table.loc[product_table[column].isna(), column] = ''
+                product_table.loc[product_table[column].isna(), column] = 'EmptyValue'
             elif self.input_table_types_dict.get(column) == 'Булево':
                 product_table.loc[product_table[column].isna(), column] = 0
             elif self.input_table_types_dict.get(column) == 'Числ':

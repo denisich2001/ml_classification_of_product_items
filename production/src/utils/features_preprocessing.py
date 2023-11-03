@@ -3,7 +3,6 @@ import pandas as pd
 from nltk.stem.snowball import SnowballStemmer
 
 
-
 def text_feature_preprocessing(text_feature: pd.Series):
     """
         Функция преобразования текстовых факторов
@@ -22,6 +21,7 @@ def text_feature_by_token_processing(text):
     Проводим стемминг.
     При наличии русских букв в строке - используем Стеммер для русского языка, иначе - для английского
     """
+    text = str(text)
     if bool(re.search('[а-яА-Я]', text)):
         stemmer = SnowballStemmer("russian")
     else:
