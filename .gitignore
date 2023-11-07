@@ -1,1 +1,6 @@
 .ipynb_checkpoints
+*/.idea/*
+*/.idea
+*/.gitignore
+./idea/misc.xml
+*/__pycache__/*
